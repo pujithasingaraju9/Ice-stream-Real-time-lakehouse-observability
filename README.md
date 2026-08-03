@@ -1,80 +1,16 @@
-# IceStream - Member 1 (Kafka Producer)
+# React + Vite
 
-## Description
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-This module generates fake e-commerce transaction data and streams it to Apache Kafka.
+Currently, two official plugins are available:
 
----
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Technologies Used
+## React Compiler
 
-- Python
-- Apache Kafka
-- Docker
-- Faker
-- kafka-python
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
----
+## Expanding the ESLint configuration
 
-## Project Structure
-
-```
-Producer.py
-transaction_generator.py
-config.py
-sample_transactions.json
-requirements.txt
-README.md
-```
-
----
-
-## Installation
-
-Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-Start Kafka
-
-```bash
-docker start kafka
-```
-
-Run Producer
-
-```bash
-python Producer.py
-```
-
----
-
-## Kafka Configuration
-
-Broker
-
-```
-localhost:9092
-```
-
-Topic
-
-```
-orders
-```
-
----
-
-## Output
-
-The producer continuously streams fake transaction records to Kafka.
-
-Some records intentionally contain errors such as
-
-- Negative price
-- Missing customer name
-- Zero quantity
-
-These are used for testing downstream data validation.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
