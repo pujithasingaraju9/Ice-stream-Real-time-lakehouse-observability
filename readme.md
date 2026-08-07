@@ -1,210 +1,182 @@
-ICESTREAM MEMBER 2
-Apache Flink + Kafka + Apache Iceberg
+IceStream - Member 2
 
+Role
 
-========================================
-IMPORTANT MEMBER 1 SETTINGS
-========================================
+Member 2 is responsible for Apache Flink stream processing and storing only validated records in Apache Iceberg.
 
-Member 1 config.py must contain:
+Final Architecture
 
-KAFKA_BROKER = "localhost:9092"
-TOPIC_NAME = "transactions"
+Member 1
+Kafka Producer
+    |
+    v
+Kafka topic: orders
+    |
+    v
+Member 2
+Apache Flink
+- Read Kafka stream
+- Parse JSON
+- Basic transformation
+    |
+    v
+Kafka topic: transformed-orders
+    |
+    v
+Member 3
+- Great Expectations / Validation
+- Circuit Breaker
+- DLQ
+- Alert API
+    |
+    v
+Valid?
+ /    \
+Yes    No
+ |      |
+ v      v
+validated-orders   DLQ + Alert
+ |
+ v
+Member 2
+Apache Flink
+ |
+ v
+Apache Iceberg
+ |
+ v
+Member 4 Dashboard
 
-The producer sends messages using:
+Member 2 Responsibilities
 
-producer.send(TOPIC_NAME, transaction)
+Read raw transaction data from Kafka topic orders.
 
+Perform basic transformation using Apache Flink.
 
-========================================
-STEP 1: START DOCKER DESKTOP
-========================================
+Publish transformed records to Kafka topic transformed-orders.
 
-Open Docker Desktop.
+Do not store unvalidated records directly in Iceberg.
 
-Wait until Docker Desktop shows:
+Read validated records from Kafka topic validated-orders.
 
-Engine running
+Store only validated records in Apache Iceberg.
 
+Kafka Topics
 
-========================================
-STEP 2: OPEN POWERSHELL
-========================================
+orders - Member 1 to Member 2
 
-Open PowerShell inside the IceStream_Member2 folder.
+transformed-orders - Member 2 to Member 3
 
+validated-orders - Member 3 to Member 2
 
-========================================
-STEP 3: START KAFKA AND FLINK
-========================================
+Important Fields
 
-Run:
+Member 2 preserves the fields required by Member 3 validation:
+
+order_id
+
+customer_name
+
+product
+
+price
+
+quantity
+
+payment_method
+
+city
+
+order_status
+
+timestamp
+
+Member 2 may also add transformation fields such as:
+
+amount
+
+transaction_status
+
+Folder Structure
+
+mem 2/
+|
+|-- docker-compose.yml
+|-- commands.txt
+|-- README.md
+|-- flink/
+|   `-- pipeline.sql
+`-- iceberg/
+    `-- warehouse/
+
+How To Run
+
+Open PowerShell inside the Member 2 folder.
 
 docker compose up -d
 
-
 Check containers:
 
-docker compose ps
+docker compose ps -a
 
+Check Kafka topics:
 
-The following containers should be running:
+docker compose exec broker /opt/kafka/bin/kafka-topics.sh --bootstrap-server broker:19092 --list
 
-icestream-kafka
-icestream-jobmanager
-icestream-taskmanager
-
-
-========================================
-STEP 4: OPEN FLINK DASHBOARD
-========================================
-
-Open this address in the browser:
-
-http://localhost:8081
-
-
-========================================
-STEP 5: START THE FLINK PIPELINE
-========================================
-
-Run:
+Start the Flink pipeline:
 
 docker compose exec jobmanager ./bin/sql-client.sh -f /opt/flink/sql/pipeline.sql
 
+Check the Flink job:
 
-The Flink job will:
+docker compose exec jobmanager ./bin/flink list
 
-1. Read JSON messages from Kafka
-2. Extract transaction information
-3. Remove invalid transactions
-4. Add HIGH, NORMAL or LOW status
-5. Save the transactions into Iceberg
+Then run Member 1 producer in another terminal.
 
+Member 2 will read from orders, transform the data, and publish to transformed-orders.
 
-========================================
-STEP 6: RUN MEMBER 1 PRODUCER
-========================================
+Member 3 must then validate the records and publish valid records to validated-orders.
 
-Open another PowerShell window.
+Member 2 reads validated-orders and stores only those valid records in Iceberg.
 
-Go to the Member 1 folder.
+Check Transformed Records
 
-Run:
+docker compose exec broker /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server broker:19092 --topic transformed-orders --from-beginning
 
-python producer.py
+Check Validated Records
 
+docker compose exec broker /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server broker:19092 --topic validated-orders --from-beginning
 
-Example Member 1 output:
+Check Iceberg Files
 
-Starting Kafka Producer...
+docker compose exec taskmanager bash -c "find /opt/flink/warehouse -type f"
 
-{
-    "order_id": 1,
-    "customer_id": "C101",
-    "product": "Laptop",
-    "quantity": 1,
-    "amount": 60000
-}
-
-
-========================================
-TRANSACTION STATUS RULES
-========================================
-
-Amount 50000 or above:
-
-HIGH
-
-
-Amount from 10000 to 49999:
-
-NORMAL
-
-
-Amount below 10000:
-
-LOW
-
-
-========================================
-STEP 7: CHECK FLINK JOB
-========================================
-
-Open:
-
-http://localhost:8081
-
-Select:
-
-Running Jobs
-
-The Kafka to Iceberg job should be visible.
-
-
-========================================
-STEP 8: CHECK ICEBERG DATA
-========================================
-
-Run:
-
-docker compose exec jobmanager ./bin/sql-client.sh
-
-
-Paste the following SQL commands:
-
-
-CREATE CATALOG iceberg_catalog
-WITH (
-    'type' = 'iceberg',
-    'catalog-type' = 'hadoop',
-    'warehouse' = 'file:///opt/flink/warehouse'
-);
-
-
-SET 'execution.runtime-mode' = 'batch';
-
-
-SELECT *
-FROM iceberg_catalog.icestream.transactions;
-
-
-The saved transactions will be displayed.
-
-
-========================================
-STEP 9: EXIT SQL CLIENT
-========================================
-
-Run:
-
-QUIT;
-
-
-========================================
-STEP 10: STOP THE PROJECT
-========================================
-
-Run:
+Stop Project
 
 docker compose down
 
-
-To delete everything, including Kafka data:
+Full Reset
 
 docker compose down -v
 
+If old Iceberg files must be removed:
 
-========================================
-MEMBER 2 TASKS COMPLETED
-========================================
+Remove-Item -Recurse -Force .\iceberg\warehouse\*
 
-1. Read Kafka messages using Flink
+Then restart:
 
-2. Transform transaction data
+docker compose up -d
 
-3. Remove invalid transactions
+Important Note
 
-4. Add HIGH, NORMAL or LOW status
+Iceberg will not receive data immediately after Member 1 produces transactions.
 
-5. Save processed data into Apache Iceberg
+The correct sequence is:
+
+Member 1
+  -> Member 2 transformation
+  -> Member 3 validation
+  -> valid records
+  -> Member 2 Iceberg storage
+
+This matches the final project architecture.

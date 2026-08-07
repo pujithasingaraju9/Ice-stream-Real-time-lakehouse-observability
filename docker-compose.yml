@@ -32,16 +32,12 @@ services:
 
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@broker:29093"
-
       CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-
       KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
 
     healthcheck:
@@ -57,7 +53,10 @@ services:
 
 
   # =====================================================
-  # CREATE KAFKA TOPIC: orders
+  # CREATE ALL KAFKA TOPICS
+  # orders              : Member 1 -> Member 2
+  # transformed-orders  : Member 2 -> Member 3
+  # validated-orders    : Member 3 -> Member 2
   # =====================================================
   kafka-topic:
     image: apache/kafka:4.3.1
@@ -81,11 +80,27 @@ services:
           --partitions 1 \
           --replication-factor 1
 
-        echo "Kafka topic 'orders' is ready."
+        /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server broker:19092 \
+          --create \
+          --if-not-exists \
+          --topic transformed-orders \
+          --partitions 1 \
+          --replication-factor 1
+
+        /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server broker:19092 \
+          --create \
+          --if-not-exists \
+          --topic validated-orders \
+          --partitions 1 \
+          --replication-factor 1
+
+        echo "Kafka topics are ready: orders, transformed-orders, validated-orders"
 
 
   # =====================================================
-  # DOWNLOAD CONNECTOR JAR FILES
+  # DOWNLOAD FLINK CONNECTOR JARS
   # =====================================================
   flink-connectors:
     image: alpine:3.20
@@ -103,31 +118,26 @@ services:
         set -eu
 
         echo "Downloading Kafka connector..."
-
         wget -q \
           -O /connectors/flink-sql-connector-kafka-3.4.0-1.20.jar \
           https://repo.maven.apache.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.4.0-1.20/flink-sql-connector-kafka-3.4.0-1.20.jar
 
         echo "Downloading Iceberg connector..."
-
         wget -q \
           -O /connectors/iceberg-flink-runtime-1.20-1.11.0.jar \
           https://repo.maven.apache.org/maven2/org/apache/iceberg/iceberg-flink-runtime-1.20/1.11.0/iceberg-flink-runtime-1.20-1.11.0.jar
 
         echo "Downloading Hadoop client API..."
-
         wget -q \
           -O /connectors/hadoop-client-api-3.3.6.jar \
           https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-api/3.3.6/hadoop-client-api-3.3.6.jar
 
         echo "Downloading Hadoop client runtime..."
-
         wget -q \
           -O /connectors/hadoop-client-runtime-3.3.6.jar \
           https://repo.maven.apache.org/maven2/org/apache/hadoop/hadoop-client-runtime/3.3.6/hadoop-client-runtime-3.3.6.jar
 
         echo "Downloading Commons Logging..."
-
         wget -q \
           -O /connectors/commons-logging-1.2.jar \
           https://repo.maven.apache.org/maven2/commons-logging/commons-logging/1.2/commons-logging-1.2.jar
@@ -151,7 +161,6 @@ services:
     depends_on:
       kafka-topic:
         condition: service_completed_successfully
-
       flink-connectors:
         condition: service_completed_successfully
 
@@ -163,9 +172,7 @@ services:
       - |
         mkdir -p /opt/flink/warehouse
         chmod -R 777 /opt/flink/warehouse
-
         cp /connectors/*.jar /opt/flink/lib/
-
         exec /docker-entrypoint.sh jobmanager
 
     environment:
@@ -194,7 +201,6 @@ services:
     depends_on:
       jobmanager:
         condition: service_started
-
       flink-connectors:
         condition: service_completed_successfully
 
@@ -206,9 +212,7 @@ services:
       - |
         mkdir -p /opt/flink/warehouse
         chmod -R 777 /opt/flink/warehouse
-
         cp /connectors/*.jar /opt/flink/lib/
-
         exec /docker-entrypoint.sh taskmanager
 
     environment:

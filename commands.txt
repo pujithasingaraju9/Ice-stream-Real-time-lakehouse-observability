@@ -1,218 +1,45 @@
-project/
-├── IceStream_Member1_Kafka/
-│   ├── producer.py
-│   ├── transaction_generator.py
-│   ├── config.py
-│   └── requirements.txt
-│
-└── IceStream_Mem2/
-    ├── docker-compose.yml
-    └── flink/
-        └── pipeline.sql
+# 1. Go to Member 2
+cd "C:\Users\SINGARAJU PUJITHA\Desktop\mem 2\project\IceStream_Mem2"
 
-1. Install prerequisites
+# 2. Start Kafka + Flink
+docker compose up -d
 
-Install:
+# 3. Check containers
+docker compose ps -a
 
-Docker Desktop
-Python 3.11 or newer
+# 4. Run Member 2 Flink pipeline
+docker compose exec jobmanager ./bin/sql-client.sh -f /opt/flink/sql/pipeline.sql
 
-Open Docker Desktop and wait until it shows:
+# 5. Check Flink job
+docker compose exec jobmanager ./bin/flink list
 
-Engine running
+Then open a new PowerShell and run Member 1:
 
-Check Docker in Windows PowerShell:
+cd "C:\Users\SINGARAJU PUJITHA\Desktop\mem 2\project\IceStream_Member1_Kafka"
 
-docker version
-
-Check Python:
-
-python --version
-
-
-First-time project run
-2. Open Member 2 folder
-
-Replace the path with the location on the new laptop:
-
-cd "C:\path\to\project\IceStream_Mem2"
-
-Example:
-
-cd "C:\Users\User\Desktop\project\IceStream_Mem2"
-3. Validate the Compose file
-docker compose -f .\docker-compose.yml config
-
-It should display the configuration without errors.
-
-4. Start Kafka and Flink
-docker compose -f .\docker-compose.yml up -d
-
-The first run may take a few minutes because Docker downloads Kafka, Flink and connector images.
-
-5. Check all containers
-docker compose -f .\docker-compose.yml ps -a
-
-Expected:
-
-icestream-kafka              Up (healthy)
-icestream-jobmanager         Up
-icestream-taskmanager        Up
-icestream-flink-connectors   Exited (0)
-icestream-topic-creator      Exited (0)
-
-Exited (0) is normal for the connector downloader and topic creator.
-
-6. Start the Flink SQL pipeline
-docker compose -f .\docker-compose.yml exec jobmanager ./bin/sql-client.sh -f /opt/flink/sql/pipeline.sql
-
-Successful output:
-
-SQL update statement has been successfully submitted to the cluster
-Job ID: ...
-7. Confirm the Flink job is running
-docker compose -f .\docker-compose.yml exec jobmanager ./bin/flink list
-
-Expected:
-
-insert-into_iceberg_catalog.icestream.orders (RUNNING)
-
-The jdk.compiler messages are only warnings.
-
-8. Open the Flink dashboard
-
-Open in the browser:
-
-http://localhost:8081
-
-The job should appear under Running Jobs.
-
-Run Member 1
-9. Open a second PowerShell terminal
-
-Go to the Member 1 folder:
-
-cd "C:\path\to\project\IceStream_Member1_Kafka"
-10. Install Python packages
-python -m pip install kafka-python faker
-
-Or, when a requirements.txt file is available:
-
-python -m pip install -r requirements.txt
-11. Confirm Member 1 configuration
-
-config.py must contain:
-
-KAFKA_BROKER = "localhost:9092"
-TOPIC_NAME = "orders"
-STREAM_DELAY = 2
-12. Start the Kafka producer
 python producer.py
 
-Expected output:
+Then open another PowerShell in Member 2 and check whether Member 2 is producing transformed records:
 
-🚀 Starting Kafka Producer...
-{'order_id': 1, 'product': 'Laptop', ...}
-{'order_id': 2, 'product': 'Camera', ...}
+cd "C:\Users\SINGARAJU PUJITHA\Desktop\mem 2\project\IceStream_Mem2"
 
-Let it generate some orders.
+docker compose exec broker /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server broker:19092 --topic transformed-orders --from-beginning
 
-Stop the producer using:
 
-Ctrl + C
-Check Member 2 results
-13. Return to the Member 2 terminal
-cd "C:\path\to\project\IceStream_Mem2"
 
-Wait 15 seconds for the Iceberg checkpoint:
 
-Start-Sleep -Seconds 15
-14. Check the Iceberg files
-docker compose -f .\docker-compose.yml exec taskmanager bash -c "find /opt/flink/warehouse -type f"
 
-Successful output should include:
 
-/opt/flink/warehouse/icestream/orders/data/...parquet
-/opt/flink/warehouse/icestream/orders/metadata/...avro
-/opt/flink/warehouse/icestream/orders/metadata/v2.metadata.json
 
-The .parquet file proves that the transformed records were saved.
 
-View the stored records
-15. Open the Flink SQL Client
-docker compose -f .\docker-compose.yml exec jobmanager ./bin/sql-client.sh
 
-Paste the following SQL commands one by one.
 
-Create the Iceberg catalog
-CREATE CATALOG iceberg_catalog
-WITH (
-    'type' = 'iceberg',
-    'catalog-type' = 'hadoop',
-    'warehouse' = 'file:///opt/flink/warehouse'
-);
-Enable batch reading
-SET 'execution.runtime-mode' = 'batch';
-Display results as a table
-SET 'sql-client.execution.result-mode' = 'tableau';
-View the records
-SELECT
-    transaction_id,
-    product,
-    quantity,
-    amount,
-    transaction_status,
-    event_time
-FROM iceberg_catalog.icestream.orders;
 
-Expected columns:
 
-transaction_id
-product
-quantity
-amount
-transaction_status
-event_time
 
-Exit the SQL Client:
 
-QUIT;
-Stop the project
 
-Stop Kafka and Flink while keeping the Iceberg data:
 
-docker compose -f .\docker-compose.yml down
 
-Do not use the following command unless all saved Iceberg data should be deleted:
 
-docker compose -f .\docker-compose.yml down -v
-Commands for every later run
 
-After the first successful setup, use these commands.
-
-Terminal 1 — Member 2
-cd "C:\path\to\project\IceStream_Mem2"
-docker compose -f .\docker-compose.yml up -d
-docker compose -f .\docker-compose.yml exec jobmanager ./bin/sql-client.sh -f /opt/flink/sql/pipeline.sql
-docker compose -f .\docker-compose.yml exec jobmanager ./bin/flink list
-Terminal 2 — Member 1
-cd "C:\path\to\project\IceStream_Member1_Kafka"
-python producer.py
-Check saved files
-cd "C:\path\to\project\IceStream_Mem2"
-Start-Sleep -Seconds 15
-docker compose -f .\docker-compose.yml exec taskmanager bash -c "find /opt/flink/warehouse -type f"
-Stop everything
-docker compose -f .\docker-compose.yml down
-Complete execution order
-1. Start Docker Desktop
-2. Open Member 2 folder
-3. Run docker compose up -d
-4. Submit pipeline.sql
-5. Confirm Flink job is RUNNING
-6. Open Member 1 folder in another terminal
-7. Run python producer.py
-8. Wait about 15 seconds
-9. Check the Iceberg Parquet files
-10. Run the SELECT query
-11. Stop using docker compose down
